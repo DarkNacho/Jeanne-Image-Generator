@@ -8,7 +8,7 @@ import sys
 import random
 from typing import List, Dict, Any
 
-from src.cli import parse_arguments
+from src.cli import parse_arguments, NORMAL_MASTER_CSV, EROTIC_MASTER_CSV
 from src.database import PipelineDatabase
 from src.assembler import PromptAssembler
 from src.workflow import ComfyUIWorkflowBuilder
@@ -36,6 +36,8 @@ def main():
         db = PipelineDatabase(args.master_csv, args.shots_csv)
         log(f"[+] Diccionario Maestro cargado: {len(db.dictionary)} bloques atómicos.")
         log(f"[+] Guion de Escenas cargado: {len(db.shots)} tomas registradas.")
+        if args.advanced:
+            log(f"[+] Composición Avanzada activa (PIE/BRA): {db.master_csv} + {db.shots_csv}")
     except Exception as e:
         log(f"[!] Error al inicializar base de datos: {e}")
         sys.exit(1)
@@ -80,18 +82,33 @@ def main():
         log(f"[+] Modo Guionado: {len(assembled_shots)} tomas compiladas.\n")
 
     elif args.mode == "random":
-        log(f"[+] Modo Creativo (Random): Generando {args.count} variaciones válidas...\n")
-        log(f"    Sesgo erotico: {args.erotica:.1f} (1.0=100% sexy, 0.5=50/50, 0.0=100% normal)")
+        log(f"[+] Modo Creativo (Random): Generando {args.count} variaciones válidas...")
+        # --erotica parcial (0 < p < 1) sin --master-csv explícito: mezcla tabla sexy y clásica
+        normal_asm = None
+        bias = args.erotica
+        if bias is not None and 0.0 < bias < 1.0 and not args.master_csv_explicit:
+            normal_asm = PromptAssembler(PipelineDatabase(NORMAL_MASTER_CSV, args.shots_csv))
+            log(f"    Erótica {bias:.2f}: cada toma usa {EROTIC_MASTER_CSV} con p={bias:.2f}, "
+                f"si no {NORMAL_MASTER_CSV}")
+        else:
+            log(f"    Fuente de datos: {db.master_csv}")
+        log("")
+
         for i in range(1, args.count + 1):
-            assembled_shots.append(
-                assembler.generate_random_shot(
-                    iteration_idx=i,
-                    outfit_id=args.outfit,
-                    pose_path=args.pose_path,
-                    luz_id=args.luz,
-                    erotica_bias=args.erotica
-                )
+            asm = assembler
+            if normal_asm and random.random() >= bias:
+                # Outfits exclusivos de la tabla sexy fuerzan esa fuente
+                if not args.outfit or normal_asm.db.get_entry(args.outfit):
+                    asm = normal_asm
+            shot = asm.generate_random_shot(
+                iteration_idx=i,
+                outfit_id=args.outfit,
+                pose_path=args.pose_path,
+                luz_id=args.luz,
+                advanced=args.advanced
             )
+            shot["meta"]["Fuente_Datos"] = str(asm.db.master_csv)
+            assembled_shots.append(shot)
 
     # 3. Construir Grafo y Renderizar Salida
     batch_payloads = []
@@ -117,6 +134,7 @@ def main():
             "seed": shot_seed,
             "positive_prompt": shot["positive_prompt"],
             "negative_prompt": shot["negative_prompt"],
+            "rule_notes": shot.get("rule_notes", []),
             "prompt_workflow": graph
         }
 

@@ -1,5 +1,5 @@
 # ESTADO DE LA SESIÓN Y CONTEXTO DEL PROYECTO (SESSION HANDOFF)
-**Fecha:** 16 de Noviembre de 2026  
+**Fecha:** 16 de Noviembre de 2026 (actualizado: Composición Avanzada PIE/BRA)  
 **Proyecto:** Pipeline de Generación de Imágenes - Jeanne Alter (Fate) en ComfyUI  
 **Objetivo:** Automatización de sesiones fotográficas continuas, consistentes y modulares con modelos LoRA sin necesidad de re-entrenamiento.
 
@@ -45,32 +45,35 @@ El usuario incorporó las siguientes novedades en el repositorio:
 
 ---
 
-## 3. Discusión en Curso: Auditoría de Poses y la "Opción C"
+## 3. Opción C implementada: Purificación + Micro-control de Extremidades
 
-### El Problema Identificado en los CSVs
-Al analizar `tablas_pipeline_jeanne_alter.csv`, se descubrieron solapamientos en `POSE_PACK`:
-* `PACK-01`: Tiene `stone steps` (contaminación de escenografía que choca con otras locaciones) y `hands together` (duplica `ACC-05`).
-* `PACK-02`: Tiene `shallow depth of field` (duplica el estilo obligatorio `EST-01`).
-* `PACK-03` y `PACK-04`: Tienen `wind, hair blowing` (física/clima) y `holding sword` (utilería que contradice atuendos sin armas).
+### Fase 1 — Datos
+* **`POSE_PACK` purificados** (cinemática pura):
+  * `tablas_pipeline_jeanne_alter.csv`: se quitaron `stone steps`, `symmetry`, `shallow depth of field`, `wind, hair blowing`, `holding sword`, `dramatic tension`. (Las 4 filas habían quedado con 14 columnas tras la edición manual; se reescribieron a 9.)
+  * `tablas_pipeline_erotico_sexy.csv`: se quitaron tags de expresión/mirada/estilo (`thoughtful expression`, `intense direct gaze`, `skin texture`…). Los `POS-01..03` se atomizaron en tags Danbooru simples para poder retirar solo la parte de manos/piernas.
+  * `CAM-02` (sexy) usaba `knee up` como "desde las rodillas"; en Danbooru significa levantar la rodilla → se cambió a `cowboy shot`.
+* **Nuevas categorías en `tablas_pipeline_erotico_sexy.csv`:** `PIE-01..07`, `BRA-01..08` y `CAM-03` (Plano Entero) / `CAM-04` (Plano Entero Contrapicado). Detalle en `ARCHITECTURE.md` §8.
+* **Nuevo guion `escenas_sesion_avanzada_jeanne.csv`:** `ADV-01..05` (tomas de composición) + `VAL-01..05` (una toma por regla, para verificar el validador).
 
-### La Solución Acordada: "Opción C" (Purificación + Micro-control Condicional)
-Se acordó avanzar hacia la **Opción C**:
-1. **Purificar `POSE_PACK` (Opción A):**
-   * Quitar fondos, estilos, viento y utilería de los packs, dejándolos como cinemáticas corporales puras (`sitting, relaxed posture`, `combat stance, athletic stance`, etc.).
-2. **Añadir Capa de Micro-Control de Extremidades:**
-   * `BRA` (Acción de brazos/manos): Opciones como `arms at sides`, `hand on hip`, `arms crossed`, `hands clasped / on lap`, `leaning back on hands`, o `None / Auto`.
-   * `PIE` (Modificador de piernas/stance): Opciones como `crossed legs`, `legs together`, `one knee up`, `wide stance`, o `None / Auto`.
-3. **Reglas Condicionales Estrictas:**
-   * **Condicional de Encuadre:** Si el plano es Plano Medio o Primer Plano (`CAM-03`, `CAM-04`, `PACK-02`), `PIE` se fuerza automáticamente a `None` (evita deformaciones de torso en retratos).
-   * **Condicional de Cinemática:** Si la pose es de locomoción activa (`walking`), `PIE` no puede ser `crossed legs`.
-   * **Opcionalidad Nula:** Si `BRA` o `PIE` son `None / Auto`, no se inyecta ningún tag adicional y se permite al generador componer la pose de forma natural y fluida.
+### Fase 2 — Código
+* **`src/limb_rules.py` (`LimbRuleEngine`)**, llamado desde `PromptAssembler.assemble_from_sequence`:
+  * Encuadre cerrado → `PIE` anulado.
+  * Locomoción (`walking`) → `PIE` de piernas cruzadas anulado.
+  * Mano primaria → la otra mano se auto-asigna Soporte (sentada) o Libre (de pie). Dos acciones de interacción a la vez solo con `BRA-08` (Ambas manos).
+  * `PIE-04` (`manual_lower_interaction`) ocupa la Mano 1: los BRA solo gestionan la Mano 2, y `BRA-08` y las `Mano_Primaria` se eliminan cuando está activo.
+  * Colisión de tags: PIE/BRA sustituyen los tags de piernas/manos de `POS`/`ACC`/`POSE_PACK`/`EXP` (EXP-05/06 traen manos).
+* **CLI:** `--advanced` / `--composicion-avanzada` (cambia los CSV por defecto y activa PIE/BRA en random).
+* **`--erotica [p]` corregida:** cambia el maestro a la tabla sexy; en random con `0 < p < 1` mezcla tablas por toma (verificado: `0.5` → 98/102 sobre 200 tomas). Sin bandera o con `0.0` → tabla clásica.
+* **Salida:** cada corrección se muestra como `⚖️ REGLA:` y se guarda en `rule_notes`.
+
+### Decisiones de interpretación (revisar)
+* El ejemplo del plan *"manual_lower_interaction + primary_hand_action + support_hand_pose"* declara 3 acciones para 2 manos. Confirmado con el usuario: `PIE-04` es la Mano 1. `ADV-02` usa `PIE-04 + BRA-06`; `VAL-03` reproduce el ejemplo literal (se quita `BRA-01`) y `VAL-05` prueba `PIE-04 + BRA-08` (se quita `BRA-08`).
+* El framing se detecta por tags y no por ID, porque `CAM-03` significa "Plano medio" en la tabla clásica y "Plano Entero" en la sexy.
 
 ---
 
-## 4. Próximos Pasos para la Siguiente Sesión
+## 4. Próximos Pasos
 
-1. Actualizar `tablas_pipeline_jeanne_alter.csv` (y `tablas_pipeline_erotico_sexy.csv`):
-   * Purificar las definiciones de los `POSE_PACK`.
-   * Registrar formalmente las nuevas categorías/filas para `PIE` (posturas de piernas) y `BRA` (brazos/manos).
-2. Implementar los validadores de reglas condicionales en `src/assembler.py` para asegurar que las combinaciones imposibles se anulen automáticamente.
-3. Actualizar `ARCHITECTURE.md` con las nuevas reglas condicionales de extremidades.
+1. Generar las tomas `ADV-XX` en ComfyUI y revisar visualmente manos/piernas (el validador asegura coherencia del *prompt*, no de la imagen).
+2. Decidir si `PIE`/`BRA` deben añadirse también a la tabla clásica.
+3. Las filas `EXP` y `MIR` de la tabla sexy repiten tags (p. ej. `EXP-01` = `MIR-01`); el guion avanzado usa solo `EXP` para no duplicar.

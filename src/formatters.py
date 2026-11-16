@@ -29,6 +29,10 @@ class OutputFormatter:
         if desc:
             print(f"📝 DESCRIPCIÓN: {desc}")
         print(f"🔗 SECUENCIA: {seq_str}")
+        if meta.get("Fuente_Datos"):
+            print(f"🗂️  FUENTE: {meta['Fuente_Datos']}")
+        for note in shot.get("rule_notes", []):
+            print(f"⚖️  REGLA: {note}")
         print("-" * 80)
 
         if args.verbose:
@@ -97,6 +101,8 @@ class OutputFormatter:
                 sum_f.write(f"  Secuencia: {seq_str}\n")
                 sum_f.write(f"  LoRA Strength: {lora_str}\n")
                 sum_f.write(f"  Seed: {shot_seed}\n")
+                for note in item.get("rule_notes", []):
+                    sum_f.write(f"  Regla aplicada: {note}\n")
                 if "desglose_conceptual" in item:
                     sum_f.write("  DESGLOSE CONCEPTUAL:\n")
                     for d in item["desglose_conceptual"]:

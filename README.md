@@ -71,3 +71,15 @@ Por defecto, el pipeline **no escribe archivos en disco** para mantener el espac
 ```bash
 python pipeline.py --mode shot --save-json --output-dir output_prompts
 ```
+
+### 5. Composición Avanzada (piernas `PIE` y manos `BRA`)
+```bash
+# Guion avanzado (ADV-XX + tomas de validación VAL-XX) con las tablas sexy
+python pipeline.py --advanced
+
+# Random con modificadores de piernas/manos
+python pipeline.py --advanced --mode random --count 5
+```
+Añadir `--erotica` (o `--erotica 0.5` para mezclar 50/50 en random) cambia la fuente a la tabla sexy.
+
+Los validadores anulan automáticamente las combinaciones imposibles (PIE en planos cerrados, piernas cruzadas al caminar, dos manos con la misma acción) y lo informan con `⚖️ REGLA:`. Ver `ARCHITECTURE.md` §8.

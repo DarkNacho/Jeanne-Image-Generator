@@ -1,12 +1,14 @@
 """
 Módulo: src/assembler.py
 Responsabilidad: Lógica de ensamblado fotográfico, reglas de exclusión mutua de pose,
-capas de vestuario (LoRA Strength dinámico y supresión negativa) y generación aleatoria.
+capas de vestuario (LoRA Strength dinámico y supresión negativa), validadores de
+extremidades PIE/BRA (delegados a LimbRuleEngine) y generación aleatoria.
 """
 
 import random
 from typing import Dict, List, Optional, Any
 from .database import PipelineDatabase
+from .limb_rules import LimbRuleEngine, ROLE_PRIMARY
 
 
 class PromptAssembler:
@@ -14,6 +16,7 @@ class PromptAssembler:
 
     def __init__(self, db: PipelineDatabase):
         self.db = db
+        self.limb_rules = LimbRuleEngine(db)
 
     def assemble_from_sequence(self, sequence_ids: List[str], shot_meta: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """
@@ -21,23 +24,29 @@ class PromptAssembler:
         Aplica:
         - LoRA_Strength dinámico obtenido de la fila OUTFIT presente en la secuencia.
         - Concatenación de Prompt_Negativo_Extra del OUTFIT sobre NEG-01.
+        - Reglas de extremidades PIE/BRA (encuadre, cinemática, manos, colisiones).
         """
         pos_parts = []
         outfit_entry = None
         neg_base = ""
         resolved_blocks = []
+        missing_ids = []
 
         for raw_id in sequence_ids:
             clean_id = raw_id.strip()
             if not clean_id:
                 continue
-
             entry = self.db.get_entry(clean_id)
-            if not entry:
-                continue
+            if entry:
+                resolved_blocks.append(entry)
+            else:
+                missing_ids.append(clean_id)
 
-            resolved_blocks.append(entry)
+        resolved_blocks, limb_notes = self.limb_rules.apply(resolved_blocks)
+        if missing_ids:
+            limb_notes.insert(0, f"IDs no encontrados en el diccionario (ignorados): {', '.join(missing_ids)}.")
 
+        for entry in resolved_blocks:
             if entry["Categoria"] == "OUTFIT":
                 outfit_entry = entry
 
@@ -63,7 +72,9 @@ class PromptAssembler:
 
         return {
             "meta": shot_meta or {},
-            "sequence_ids": sequence_ids,
+            "sequence_ids": [b["ID"] for b in resolved_blocks],
+            "requested_ids": sequence_ids,
+            "rule_notes": limb_notes,
             "outfit_id": outfit_entry["ID"] if outfit_entry else "UNKNOWN",
             "lora_strength": lora_strength,
             "positive_prompt": pos_final,
@@ -81,10 +92,10 @@ class PromptAssembler:
         else:
             id_list = []
             for col in ["ID_Identidad", "ID_Outfit", "ID_PosePack", "ID_CAM", "ID_POS", "ID_ACC",
-                        "ID_Escena", "ID_EXP", "ID_MIR", "ID_LUZ", "ID_Estilo", "ID_Negative"]:
-                val = shot_row.get(col, "").strip()
-                if val:
-                    id_list.append(val)
+                        "ID_PIE", "ID_BRA", "ID_Escena", "ID_EXP", "ID_MIR", "ID_LUZ",
+                        "ID_Estilo", "ID_Negative"]:
+                # ID_PIE / ID_BRA admiten varios IDs separados por ';'
+                id_list.extend(v.strip() for v in (shot_row.get(col) or "").split(";") if v.strip())
 
         meta = {
             "Toma_ID": toma_id,
@@ -102,17 +113,19 @@ class PromptAssembler:
                              estilo_id: str = "EST-01",
                              luz_id: Optional[str] = None,
                              pose_path: str = "random",
-                             erotica_bias: float = 1.0) -> Dict[str, Any]:
+                             advanced: bool = False) -> Dict[str, Any]:
         """
         Modo Creativo (RANDOM):
         Genera una combinación aleatoria válida respetando la Regla de Pose Única:
         - Camino A (Modular): 1 CAM + 1 POS + 1 ACC
         - Camino B (Completa): 1 POSE_PACK
         
-        Parámetro erotica_bias (0.0 - 1.0):
-        - 1.0: Solo bloques del CSV sexy (erotico puro)
-        - 0.5: 50% CSV normal + 50% CSV sexy
-        - 0.0: Solo CSV normal
+        La fuente de datos (tabla clásica o sexy) la decide main.py según --erotica,
+        eligiendo qué PromptAssembler/PipelineDatabase usa cada toma.
+
+        advanced=True (Composición Avanzada): añade opcionalmente 1 PIE y una acción de
+        mano BRA (primaria o secundaria). Si hay BRA se omite ACC. Los validadores de
+        LimbRuleEngine anulan las combinaciones imposibles.
         """
         seq = ["ID-01"]
 
@@ -120,15 +133,7 @@ class PromptAssembler:
         if outfit_id:
             seq.append(outfit_id)
         else:
-            # Elegir outfit con sesgo erotico
-            if random.random() < erotica_bias:
-                outfits = self.db.get_entries_by_cat("OUTFIT")
-                chosen_outfit = random.choice(outfits)
-            else:
-                # Fallback a outfits del CSV sexy también
-                outfits = self.db.get_entries_by_cat("OUTFIT")
-                chosen_outfit = random.choice(outfits)
-            seq.append(chosen_outfit["ID"])
+            seq.append(random.choice(self.db.get_entries_by_cat("OUTFIT"))["ID"])
 
         # 2. Pose con Exclusión Mutua
         path = pose_path.lower()
@@ -137,14 +142,20 @@ class PromptAssembler:
 
         tipo_pose = "Pose_Modular" if path == "a" else "Pose_Completa"
 
+        limb_ids = self._random_limbs() if advanced else []
+        has_bra = any(i.startswith("BRA") for i in limb_ids)
+
         if path == "a":
             cam = random.choice(self.db.get_entries_by_cat("CAM"))
             pos = random.choice(self.db.get_entries_by_cat("POS"))
-            acc = random.choice(self.db.get_entries_by_cat("ACC"))
-            seq.extend([cam["ID"], pos["ID"], acc["ID"]])
+            seq.extend([cam["ID"], pos["ID"]])
+            if not has_bra:
+                seq.append(random.choice(self.db.get_entries_by_cat("ACC"))["ID"])
         else:
             pack = random.choice(self.db.get_entries_by_cat("POSE_PACK"))
             seq.append(pack["ID"])
+
+        seq.extend(limb_ids)
 
         # 3. Escena
         seq.append(escena_id)
@@ -171,3 +182,15 @@ class PromptAssembler:
         }
 
         return self.assemble_from_sequence(seq, meta)
+
+    def _random_limbs(self) -> List[str]:
+        """Selecciona 0-1 PIE y 0-1 acción de mano (primaria/secundaria) al azar."""
+        ids = []
+        pies = self.db.get_entries_by_cat("PIE")
+        if pies and random.random() < 0.5:
+            ids.append(random.choice(pies)["ID"])
+        hands = [b for b in self.db.get_entries_by_cat("BRA")
+                 if b["Tipo_Bloque"] in (ROLE_PRIMARY, "Mano_Secundaria")]
+        if hands and random.random() < 0.6:
+            ids.append(random.choice(hands)["ID"])
+        return ids

@@ -5,6 +5,11 @@ Responsabilidad: Definición y análisis de argumentos de línea de comandos (ar
 
 import argparse
 
+NORMAL_MASTER_CSV = "tablas_pipeline_jeanne_alter.csv"
+EROTIC_MASTER_CSV = "tablas_pipeline_erotico_sexy.csv"
+NORMAL_SHOTS_CSV = "escenas_sesion_jeanne_alter.csv"
+ADVANCED_SHOTS_CSV = "escenas_sesion_avanzada_jeanne.csv"
+
 
 def parse_arguments() -> argparse.Namespace:
     """Configura y analiza los argumentos de consola para la ejecución del pipeline."""
@@ -60,10 +65,15 @@ def parse_arguments() -> argparse.Namespace:
                         help="Directorio donde exportar los archivos generados (si se usa --save-json)")
 
     # Archivos CSV
-    parser.add_argument("--master-csv", type=str, default="tablas_pipeline_jeanne_alter.csv",
-                        help="Ruta al CSV Diccionario Maestro")
-    parser.add_argument("--shots-csv", type=str, default="escenas_sesion_jeanne_alter.csv",
-                        help="Ruta al CSV Guion de Escenas")
+    parser.add_argument("--master-csv", type=str, default=None,
+                        help="Ruta al CSV Diccionario Maestro (default: tablas_pipeline_jeanne_alter.csv; "
+                             "con --advanced o --erotica: tablas_pipeline_erotico_sexy.csv)")
+    parser.add_argument("--shots-csv", type=str, default=None,
+                        help="Ruta al CSV Guion de Escenas (default: escenas_sesion_jeanne_alter.csv; "
+                             "con --advanced: escenas_sesion_avanzada_jeanne.csv)")
+    parser.add_argument("--advanced", "--composicion-avanzada", dest="advanced", action="store_true",
+                        help="Composición Avanzada: usa las tablas con PIE/BRA y el guion avanzado, "
+                             "y en modo random añade modificadores de piernas y manos")
 
     # Filtros para Modo Creativo (Random)
     parser.add_argument("--outfit", type=str, default=None,
@@ -72,7 +82,19 @@ def parse_arguments() -> argparse.Namespace:
                         help="Camino de pose para modo random: 'a' (modular), 'b' (pack) o 'random'")
     parser.add_argument("--luz", type=str, default=None,
                         help="Filtro opcional para fijar iluminación en modo random (ej. 'LUZ-02')")
-    parser.add_argument("--erotica", type=float, default=1.0,
-                        help="Sesgo erotico para modo random (0.0-1.0): 1.0=100 CSV sexy, 0.5=50/50, 0.0=100 CSV normal")
+    parser.add_argument("--erotica", type=float, nargs="?", const=1.0, default=None,
+                        help="Activa la tabla sexy como fuente de datos. Sin valor = 1.0. En modo random "
+                             "el valor (0.0-1.0) es la probabilidad por toma de usar la tabla sexy frente a "
+                             "la clásica (0.5 = 50/50, 0.0 = solo clásica). Sin la bandera: tabla clásica")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.erotica is not None and not 0.0 <= args.erotica <= 1.0:
+        parser.error("--erotica debe estar entre 0.0 y 1.0")
+
+    erotica_active = args.erotica is not None and args.erotica > 0.0
+    args.master_csv_explicit = args.master_csv is not None
+    if args.master_csv is None:
+        args.master_csv = EROTIC_MASTER_CSV if (args.advanced or erotica_active) else NORMAL_MASTER_CSV
+    if args.shots_csv is None:
+        args.shots_csv = ADVANCED_SHOTS_CSV if args.advanced else NORMAL_SHOTS_CSV
+    return args
