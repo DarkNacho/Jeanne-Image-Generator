@@ -101,12 +101,18 @@ class PromptAssembler:
                              escena_id: str = "ESC-01",
                              estilo_id: str = "EST-01",
                              luz_id: Optional[str] = None,
-                             pose_path: str = "random") -> Dict[str, Any]:
+                             pose_path: str = "random",
+                             erotica_bias: float = 1.0) -> Dict[str, Any]:
         """
         Modo Creativo (RANDOM):
         Genera una combinación aleatoria válida respetando la Regla de Pose Única:
         - Camino A (Modular): 1 CAM + 1 POS + 1 ACC
         - Camino B (Completa): 1 POSE_PACK
+        
+        Parámetro erotica_bias (0.0 - 1.0):
+        - 1.0: Solo bloques del CSV sexy (erotico puro)
+        - 0.5: 50% CSV normal + 50% CSV sexy
+        - 0.0: Solo CSV normal
         """
         seq = ["ID-01"]
 
@@ -114,8 +120,14 @@ class PromptAssembler:
         if outfit_id:
             seq.append(outfit_id)
         else:
-            outfits = self.db.get_entries_by_cat("OUTFIT")
-            chosen_outfit = random.choice(outfits)
+            # Elegir outfit con sesgo erotico
+            if random.random() < erotica_bias:
+                outfits = self.db.get_entries_by_cat("OUTFIT")
+                chosen_outfit = random.choice(outfits)
+            else:
+                # Fallback a outfits del CSV sexy también
+                outfits = self.db.get_entries_by_cat("OUTFIT")
+                chosen_outfit = random.choice(outfits)
             seq.append(chosen_outfit["ID"])
 
         # 2. Pose con Exclusión Mutua

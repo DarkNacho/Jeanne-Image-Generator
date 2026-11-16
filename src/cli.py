@@ -72,5 +72,7 @@ def parse_arguments() -> argparse.Namespace:
                         help="Camino de pose para modo random: 'a' (modular), 'b' (pack) o 'random'")
     parser.add_argument("--luz", type=str, default=None,
                         help="Filtro opcional para fijar iluminación en modo random (ej. 'LUZ-02')")
+    parser.add_argument("--erotica", type=float, default=1.0,
+                        help="Sesgo erotico para modo random (0.0-1.0): 1.0=100 CSV sexy, 0.5=50/50, 0.0=100 CSV normal")
 
     return parser.parse_args()

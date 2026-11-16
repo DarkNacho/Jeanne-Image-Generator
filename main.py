@@ -81,13 +81,15 @@ def main():
 
     elif args.mode == "random":
         log(f"[+] Modo Creativo (Random): Generando {args.count} variaciones válidas...\n")
+        log(f"    Sesgo erotico: {args.erotica:.1f} (1.0=100% sexy, 0.5=50/50, 0.0=100% normal)")
         for i in range(1, args.count + 1):
             assembled_shots.append(
                 assembler.generate_random_shot(
                     iteration_idx=i,
                     outfit_id=args.outfit,
                     pose_path=args.pose_path,
-                    luz_id=args.luz
+                    luz_id=args.luz,
+                    erotica_bias=args.erotica
                 )
             )
 
