@@ -206,7 +206,7 @@ flowchart TD
        * Con `BRA-08`: la acción primaria ocupa ambas manos y se eliminan los `BRA` secundarios/soporte/libres.
        * Presupuesto de 2 manos: si se declaran más, se descarta en orden Libre → Soporte → Secundaria.
        * Si hay una acción de interacción y ninguna otra mano declarada, se inserta automáticamente `Mano_Soporte` (pose sentada/inclinada/tumbada/arrodillada) o `Mano_Libre` (resto), tomando la primera fila de ese rol en el CSV.
-    5. `_rule_tag_collisions` (**Colisión**): si hay `PIE`, se quitan los tags de piernas (`legs`, `knee`, `wide stance`, `one leg`) de `POS`/`ACC`/`POSE_PACK`/`EXP`; si hay `BRA` (o `PIE-04`), se quitan los de manos (`hand`, `arm`, `fist`, `finger`). Un bloque que queda vacío se elimina.
+    5. `_rule_tag_collisions` (**Colisión**): si hay `PIE`, se quitan los tags de piernas (`legs`, `knee`, `wide stance`, `one leg`) de `POS`/`ACC`/`POSE_PACK`/`EXP`; si hay `BRA` (o `PIE-04`), se quitan los de manos (`hand`, `arm`, `fist`, `finger`). Sin `BRA`, si un `EXP` trae tags de manos (`EXP-05`/`EXP-06`), éstos tienen prioridad y se quitan los tags de manos de `POS`/`ACC`/`POSE_PACK`. Un bloque que queda vacío se elimina.
   * Las notas se muestran en terminal como `⚖️ REGLA:` y se guardan en el resumen de disco y en el JSON batch (`rule_notes`).
 
 ---

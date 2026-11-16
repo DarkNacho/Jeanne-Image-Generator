@@ -61,7 +61,7 @@ El usuario incorporó las siguientes novedades en el repositorio:
   * Locomoción (`walking`) → `PIE` de piernas cruzadas anulado.
   * Mano primaria → la otra mano se auto-asigna Soporte (sentada) o Libre (de pie). Dos acciones de interacción a la vez solo con `BRA-08` (Ambas manos).
   * `PIE-04` (`manual_lower_interaction`) ocupa la Mano 1: los BRA solo gestionan la Mano 2, y `BRA-08` y las `Mano_Primaria` se eliminan cuando está activo.
-  * Colisión de tags: PIE/BRA sustituyen los tags de piernas/manos de `POS`/`ACC`/`POSE_PACK`/`EXP` (EXP-05/06 traen manos).
+  * Colisión de tags: PIE/BRA sustituyen los tags de piernas/manos de `POS`/`ACC`/`POSE_PACK`/`EXP` (EXP-05/06 traen manos). Sin BRA, las manos de EXP tienen prioridad sobre las de la pose.
 * **CLI:** `--advanced` / `--composicion-avanzada` (cambia los CSV por defecto y activa PIE/BRA en random).
 * **`--erotica [p]` corregida:** cambia el maestro a la tabla sexy; en random con `0 < p < 1` mezcla tablas por toma (verificado: `0.5` → 98/102 sobre 200 tomas). Sin bandera o con `0.0` → tabla clásica.
 * **Salida:** cada corrección se muestra como `⚖️ REGLA:` y se guarda en `rule_notes`.

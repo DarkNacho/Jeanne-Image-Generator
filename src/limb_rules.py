@@ -12,6 +12,8 @@ Orden de aplicación:
                   salvo BRA 'Ambas_Manos'. Presupuesto de 2 manos y auto-asignación de
                   Soporte/Libre a la mano restante.
   4. Colisión:    si hay PIE/BRA, se retiran los tags de piernas/manos de POS/ACC/POSE_PACK/EXP.
+                  Sin BRA, si un EXP trae tags de manos (EXP-05/06), éstos tienen prioridad y
+                  se retiran los tags de manos de POS/ACC/POSE_PACK.
 """
 
 import re
@@ -199,7 +201,10 @@ class LimbRuleEngine:
         has_pie = any(b["Categoria"] == "PIE" for b in blocks)
         has_bra = any(b["Categoria"] == "BRA" for b in blocks) or \
             any(b["Categoria"] == "PIE" and b.get("Tipo_Bloque") == PIE_MANUAL for b in blocks)
-        if not (has_pie or has_bra):
+        # Sin BRA: las manos declaradas en EXP tienen prioridad sobre las de la pose
+        exp_hands = not has_bra and _any_tag(
+            [b for b in blocks if b["Categoria"] == "EXP"], HAND_TAG)
+        if not (has_pie or has_bra or exp_hands):
             return blocks
 
         out = []
@@ -207,14 +212,18 @@ class LimbRuleEngine:
             if b["Categoria"] not in CLEAN_CATS:
                 out.append(b)
                 continue
+            strip_hands = has_bra or (exp_hands and b["Categoria"] in POSE_CATS)
             kept, removed = [], []
             for t in _tags(b):
-                if (has_bra and HAND_TAG.search(t)) or (has_pie and LEG_TAG.search(t)):
+                if (strip_hands and HAND_TAG.search(t)) or (has_pie and LEG_TAG.search(t)):
                     removed.append(t)
                 else:
                     kept.append(t)
             if removed:
-                notes.append(f"{b['ID']}: tags de extremidades sustituidos por PIE/BRA ({', '.join(removed)}).")
+                source = ("PIE/BRA" if has_bra else
+                          "PIE y las manos de EXP" if (has_pie and exp_hands) else
+                          "PIE" if has_pie else "las manos de EXP")
+                notes.append(f"{b['ID']}: tags de extremidades sustituidos por {source} ({', '.join(removed)}).")
             if not kept:
                 continue  # bloque vacío (p. ej. ACC completamente reemplazado por BRA)
             if removed:
