@@ -7,18 +7,21 @@ Sistema de automatización para generar lotes de imágenes continuas y consisten
 ## 📸 Arquitectura del Sistema
 
 ### 1. Base de Datos Relacional (CSV)
-* **`tablas_pipeline_jeanne_alter.csv` (Diccionario Maestro):** Bloques atómicos clasificados por categoría (`IDENTIDAD`, `OUTFIT`, `CAM`, `POS`, `ACC`, `POSE_PACK`, `ESCENA`, `EXP`, `MIR`, `LUZ`, `ESTILO`, `NEGATIVE`).
-* **`escenas_sesion_jeanne_alter.csv` (Guion de Tomas):** Tomas curadas (`SHOT-XX`) con metadatos y secuencias de IDs resueltas.
+* **`tablas_pipeline_jeanne_alter.csv` / `tablas_pipeline_erotico_sexy.csv` (Diccionario Maestro):** Bloques atómicos con IDs nemotécnicos legibles (`ID-JEANNE`, `OUT-LINGERIE`, `CAM-FULL`, `POS-RELAXED`, `HAND-HIP`, `LEG-CROSSED`, etc.) clasificados por categoría funcional (`IDENTITY`, `OUTFIT`, `CAMERA`, `POSTURE`, `GESTURE`, `POSE_PACK`, `LEGS`, `HANDS`, `SCENE`, `EXPRESSION`, `GAZE`, `LIGHT`, `STYLE`, `NEGATIVE`).
+* **`escenas_sesion_jeanne_alter.csv` / `escenas_sesion_avanzada_jeanne.csv` (Guion de Tomas):** Tomas curadas (`SHOT-XX` y `ADV-XX`) con secuencias nemotécnicas resueltas.
 
 ### 2. Reglas de Ensamblaje
-* **Bloques Fijos:** Toda toma contiene obligatoriamente `IDENTIDAD` (`ID-01`), `OUTFIT` (`OUT-XX`), `ESCENA` (`ESC-01`), `ESTILO` (`EST-01`) y `NEGATIVE` (`NEG-01`).
+* **Bloques Fijos:** Toda toma contiene obligatoriamente `IDENTITY` (`ID-JEANNE`), `OUTFIT` (`OUT-XXX`), `SCENE` (`SCENE-CATHEDRAL`), `STYLE` (`STYLE-PHOTO`) y `NEGATIVE` (`NEG-BASE`).
 * **Regla de Vestuario por Capas (`OUTFIT`):**
-  * Ajusta dinámicamente `LoRA_Strength` según el outfit (ej. `0.75` con armadura completa vs. `0.60–0.65` sin armadura).
+  * Ajusta dinámicamente `LoRA_Strength` según el outfit (ej. `0.75` con armadura completa vs. `0.60–0.65` sin armadura o lencería).
   * Concatena automáticamente `Prompt_Negativo_Extra` para suprimir piezas de armadura o prendas retiradas.
 * **Regla de Pose Única (Exclusión Mutua):**
-  * **Camino A (`Pose_Modular`):** `1 CAM` + `1 POS` + `1 ACC` (poses neutras de pie combinables).
-  * **Camino B (`Pose_Completa` / `POSE_PACK`):** `1 PACK-XX` (bloque cerrado que define encuadre, postura y manos).
-* **Actuación y Ambiente (`EXP`, `MIR`, `LUZ`):** Se combinan libremente sobre cualquiera de los dos caminos de pose.
+  * **Camino A (`Modular_Pose`):** `1 CAMERA` + `1 POSTURE` + `1 GESTURE` (o micro-control con `HANDS`/`LEGS`).
+  * **Camino B (`Full_Pose` / `POSE_PACK`):** `1 PACK-XXX` (bloque cerrado que define encuadre, postura y manos).
+* **Actuación y Ambiente (`EXPRESSION`, `GAZE`, `LIGHT`):** Se combinan libremente sobre cualquiera de los dos caminos de pose.
+
+### 2.1. Asistente Creativo para otros LLMs
+* **[`PROMPT_LLM_DIRECTOR_FOTOGRAFIA.md`](PROMPT_LLM_DIRECTOR_FOTOGRAFIA.md):** Archivo maestro autocontenido para copiar y pegar en ChatGPT, Claude o cualquier LLM sin agente, permitiéndole entender toda la arquitectura y reglas para proponer nuevas tomas válidas.
 
 ### 3. Parámetros Técnicos (ComfyUI)
 * **Checkpoint:** `WAI-Nsfw-Illustrious-17.safetensors`
@@ -72,14 +75,37 @@ Por defecto, el pipeline **no escribe archivos en disco** para mantener el espac
 python pipeline.py --mode shot --save-json --output-dir output_prompts
 ```
 
-### 5. Composición Avanzada (piernas `PIE` y manos `BRA`)
+### 5. Generar Prompt Maestro para LLMs de Rol / Chat (ChatGPT, Claude, Gemini)
+El pipeline determinista concatena bloques, pero para interpretar **conceptos complejos, poéticos o inéditos**, puedes usar un LLM externo como Director de Fotografía.
+
+El script `export_llm_prompt.py` fusiona automáticamente los diccionarios CSV, sincroniza los 88 bloques atómicos, inyecta las reglas anatómicas y genera el archivo maestro listo para usar:
+
+```bash
+# Opción A: Mediante el script dedicado
+python export_llm_prompt.py
+
+# Opción B: Mediante bandera en el pipeline
+python pipeline.py --export-llm
+```
+
+#### Flujo de Trabajo con el LLM:
+1. **Ejecuta el exportador:** Se genera/actualiza el archivo [`PROMPT_LLM_DIRECTOR_FOTOGRAFIA.md`](PROMPT_LLM_DIRECTOR_FOTOGRAFIA.md).
+2. **Copia y pega:** Pega todo el contenido de ese archivo en tu LLM (ChatGPT, Claude, etc.). El modelo adoptará el rol de Director de Fotografía conociendo todas las reglas y bloques.
+3. **Pídele cualquier escena compleja en lenguaje natural:**
+   > *"Quiero a Jeanne en lencería sentada en el altar, con una copa de vino en la mano y una expresión melancólica pero seductora en hora azul."*
+4. **Respuesta inteligente del LLM:**
+   * El LLM interpretará la escena y traducirá los conceptos a tags Danbooru para el LoRA y el modelo *Illustrious-XL*.
+   * Si una acción o elemento no existe (ej. la copa de vino), **creará el nuevo bloque atómico** (`HAND-WINE-GLASS`), validará el presupuesto anatómico de 2 manos y te dará la **fila CSV de 9 columnas** lista para agregar a tu base de datos si lo deseas.
+   * Te entregará los prompts positivo y negativo compilados listos para copiar directo a ComfyUI.
+
+### 6. Composición Avanzada (Micro-control de extremidades: `LEGS` y `HANDS`)
 ```bash
 # Guion avanzado (ADV-XX + tomas de validación VAL-XX) con las tablas sexy
 python pipeline.py --advanced
 
-# Random con modificadores de piernas/manos
+# Random con modificadores de piernas y manos
 python pipeline.py --advanced --mode random --count 5
 ```
 Añadir `--erotica` (o `--erotica 0.5` para mezclar 50/50 en random) cambia la fuente a la tabla sexy.
 
-Los validadores anulan automáticamente las combinaciones imposibles (PIE en planos cerrados, piernas cruzadas al caminar, dos manos con la misma acción) y lo informan con `⚖️ REGLA:`. Ver `ARCHITECTURE.md` §8.
+Los validadores anulan automáticamente las combinaciones imposibles (piernas en planos cerrados, piernas cruzadas al caminar, dos manos con la misma acción sin `HAND-BOTH`, etc.) y lo informan en consola con `⚖️ REGLA:`. Ver detalles en [`ARCHITECTURE.md`](ARCHITECTURE.md) §8.

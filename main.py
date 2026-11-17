@@ -18,6 +18,12 @@ from src.formatters import OutputFormatter
 
 def main():
     args = parse_arguments()
+
+    if getattr(args, "export_llm", False):
+        import export_llm_prompt
+        export_llm_prompt.main()
+        return
+
     is_json = (args.format == "json")
 
     def log(msg: str):

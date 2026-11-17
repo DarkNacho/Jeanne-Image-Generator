@@ -4,6 +4,7 @@ Responsabilidad: Lectura y gestión relacional de los archivos CSV (Diccionario 
 """
 
 import csv
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -41,9 +42,26 @@ class PipelineDatabase:
 
         with open(self.master_csv, mode="r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
-            for row in reader:
-                item_id = row["ID"].strip()
-                cat = row["Categoria"].strip()
+            for line_num, row in enumerate(reader, start=2):
+                # Detectar líneas vacías o corruptas
+                if not any(row.values()):
+                    continue
+
+                if None in row:
+                    sys.stderr.write(
+                        f"[!] ADVERTENCIA: Línea {line_num} en '{self.master_csv.name}' tiene más columnas "
+                        f"de las esperadas (posible coma sin comillas). Datos extra: {row[None]}\n"
+                    )
+
+                item_id = (row.get("ID") or "").strip()
+                cat = (row.get("Categoria") or "").strip()
+
+                if not item_id or not cat:
+                    sys.stderr.write(
+                        f"[!] ADVERTENCIA: Línea {line_num} en '{self.master_csv.name}' omitida por falta de ID o Categoria.\n"
+                    )
+                    continue
+
                 pos = row.get("Prompt_Positivo", "").strip()
                 neg_extra = row.get("Prompt_Negativo_Extra", "").strip()
 
@@ -64,17 +82,41 @@ class PipelineDatabase:
                     "Regla_Uso": row.get("Regla_Uso", "").strip()
                 }
 
+                if item_id in self.dictionary:
+                    sys.stderr.write(
+                        f"[!] ADVERTENCIA: ID duplicado '{item_id}' en '{self.master_csv.name}' (Línea {line_num}). "
+                        f"Sobrescribiendo entrada previa.\n"
+                    )
+                    # Mantener sincronizado by_category reemplazando la entrada existente
+                    cat_list = self.by_category.get(cat, [])
+                    for idx, existing in enumerate(cat_list):
+                        if existing["ID"] == item_id:
+                            cat_list[idx] = entry
+                            break
+                else:
+                    self.by_category.setdefault(cat, []).append(entry)
+
                 self.dictionary[item_id] = entry
-                self.by_category.setdefault(cat, []).append(entry)
 
     def _load_shots(self) -> None:
         """Lee el archivo CSV de escenas con las tomas planificadas."""
         if not self.shots_csv.exists():
             return
 
+        seen_tomas = set()
         with open(self.shots_csv, mode="r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
-            for row in reader:
+            for line_num, row in enumerate(reader, start=2):
+                if not any(row.values()):
+                    continue
+                toma_id = (row.get("Toma_ID") or "").strip()
+                if not toma_id:
+                    continue
+                if toma_id in seen_tomas:
+                    sys.stderr.write(
+                        f"[!] ADVERTENCIA: Toma_ID duplicado '{toma_id}' en '{self.shots_csv.name}' (Línea {line_num}).\n"
+                    )
+                seen_tomas.add(toma_id)
                 self.shots.append(row)
 
     def get_entry(self, item_id: str) -> Optional[Dict[str, Any]]:

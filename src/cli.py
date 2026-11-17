@@ -21,6 +21,8 @@ def parse_arguments() -> argparse.Namespace:
     # Modos de Operación
     parser.add_argument("--mode", choices=["shot", "random"], default="shot",
                         help="Modo de ejecución: 'shot' (guionado según CSV) o 'random' (creativo)")
+    parser.add_argument("--export-llm", action="store_true",
+                        help="Exporta y actualiza automáticamente el archivo maestro PROMPT_LLM_DIRECTOR_FOTOGRAFIA.md unificando todos los CSVs y reglas")
     parser.add_argument("--shot-id", type=str, default="all",
                         help="ID de toma específica (ej. 'SHOT-01' o 'SHOT-01,SHOT-03') o 'all'")
     parser.add_argument("--count", type=int, default=5,

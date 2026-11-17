@@ -108,8 +108,8 @@ flowchart TD
   * `_resolve_path(user_path, fallbacks) -> Path`: Resuelve la ruta del archivo con soporte de nombres alternativos.
   * `_load_master_dictionary() -> None`: Parsea `tablas_pipeline_jeanne_alter.csv`, indexa los 41 bloques atómicos, convierte `LoRA_Strength` a float y agrupa por categoría.
   * `_load_shots() -> None`: Parsea el guion de tomas. El guion avanzado añade columnas `ID_PIE` e `ID_BRA` (varios IDs separados por `;`).
-  * `get_entry(item_id: str) -> Optional[Dict]`: Retorna el bloque atómico asociado al ID (ej. `OUT-01A`, `CAM-01`).
-  * `get_entries_by_cat(cat: str) -> List[Dict]`: Retorna todos los bloques pertenecientes a una categoría (`OUTFIT`, `CAM`, `POS`, `ACC`, `PIE`, `BRA`, `EXP`, etc.).
+  * `get_entry(item_id: str) -> Optional[Dict]`: Retorna el bloque atómico asociado al ID (ej. `OUT-ARMOR`, `CAM-FULL`, `HAND-HAIR`).
+  * `get_entries_by_cat(cat: str) -> List[Dict]`: Retorna todos los bloques pertenecientes a una categoría (`OUTFIT`, `CAMERA`, `POSTURE`, `GESTURE`, `LEGS`, `HANDS`, `EXPRESSION`, `GAZE`, `LIGHT`, etc.).
 
 ---
 
@@ -122,17 +122,17 @@ flowchart TD
     * Pasa los bloques por `LimbRuleEngine.apply()` (ver sección 8) antes de concatenar.
     * Identifica el bloque `OUTFIT`:
       1. Extrae su `LoRA_Strength` dinámico (`0.75` con armadura, `0.60–0.65` sin armadura).
-      2. Si tiene `Prompt_Negativo_Extra`, lo concatena con `NEG-01` para supresión de armadura/piezas metálicas.
+      2. Si tiene `Prompt_Negativo_Extra`, lo concatena con `NEG-BASE` para supresión de armadura/piezas metálicas.
     * Concatena en orden los tags Danbooru para el Prompt Positivo.
     * Retorna dict con prompts, metadata, LoRA strength, bloques resueltos, `sequence_ids` (secuencia final tras reglas), `requested_ids` (secuencia pedida) y `rule_notes` (correcciones aplicadas).
   * `assemble_shot(shot_row: Dict[str, str]) -> Dict`:
     * Resuelve una toma del guion leyendo `Secuencia_IDs` (o reconstruyéndola desde columnas ID individuales, incluidas `ID_PIE` / `ID_BRA`).
   * `generate_random_shot(iteration_idx, outfit_id, escena_id, estilo_id, luz_id, pose_path) -> Dict`:
     * **Regla de Pose Única (Exclusión Mutua):**
-      * Si Camino A: Selecciona exactamente `1 CAM` + `1 POS` + `1 ACC`.
-      * Si Camino B: Selecciona exactamente `1 POSE_PACK` (nunca mezcla con CAM/POS/ACC).
-    * Añade libremente actuación (`EXP`), mirada (`MIR`) y luz (`LUZ`).
-    * Con `advanced=True`: `_random_limbs()` añade 0–1 `PIE` (50%) y 0–1 acción de mano `BRA` primaria/secundaria (60%). Si hay `BRA`, en Camino A se omite `ACC`.
+      * Si Camino A: Selecciona exactamente `1 CAMERA` + `1 POSTURE` + `1 GESTURE`.
+      * Si Camino B: Selecciona exactamente `1 POSE_PACK` (nunca mezcla con CAMERA/POSTURE/GESTURE).
+    * Añade libremente actuación (`EXPRESSION`), mirada (`GAZE`) y luz (`LIGHT`).
+    * Con `advanced=True`: `_random_limbs()` añade 0–1 `LEGS` (50%) y 0–1 acción de mano `HANDS` primaria/secundaria (60%). Si hay `HANDS`, en Camino A se omite `GESTURE`.
 
 ---
 
@@ -177,36 +177,49 @@ flowchart TD
 ---
 
 ### 8. `src/limb_rules.py`
-* **Rol:** Validadores condicionales de extremidades. Opera sobre la lista de bloques resueltos y devuelve `(bloques_corregidos, notas)`. Toda la clasificación es por datos (`Categoria`, `Tipo_Bloque` y tags), no por IDs fijos, así que funciona con cualquier diccionario maestro.
-* **Categorías nuevas (en `tablas_pipeline_erotico_sexy.csv`):**
+* **Rol:** Validadores condicionales de extremidades. Opera sobre la lista de bloques resueltos y devuelve `(bloques_corregidos, notas)`. Toda la clasificación es por datos (`Categoria`, `Tipo_Bloque` y tags), no por IDs fijos, así que funciona con cualquier diccionario maestro con compatibilidad bilingüe.
+* **Campos en Inglés (Máquina) y Español (Humano):**
+  * **Máquina (Inglés):** `ID`, `Categoria`, `Tipo_Bloque`, `Prompt_Positivo`, `Prompt_Negativo_Extra`.
+  * **Humano (Español):** `Concepto`, `Descripcion_Natural` (en diccionarios); `Descripcion` (en guiones).
 
-  | ID | Tipo_Bloque | Concepto (clave del plan) | Tags |
-  | :--- | :--- | :--- | :--- |
-  | `PIE-01` | `Pierna_Apertura` | `legs_open_wide` | `legs apart, wide stance` |
-  | `PIE-02` | `Pierna_Perfil` | `profile_lower_view` | `from side, legs in profile, long legs` |
-  | `PIE-03` | `Pierna_Enfoque` | `lower_body_focus` | `leg focus, thighs, long legs` |
-  | `PIE-04` | `Interaccion_Manual` | `manual_lower_interaction` (ocupa una mano) | `adjusting legwear, hand on own thigh` |
-  | `PIE-05` | `Pierna_Cruzada` | Piernas cruzadas | `crossed legs` |
-  | `PIE-06` | `Pierna_Juntas` | Piernas juntas | `legs together` |
-  | `PIE-07` | `Pierna_Rodilla` | Rodilla elevada | `knee up` |
-  | `BRA-01/02` | `Mano_Primaria` | `primary_hand_action` | `hand in own hair` / `adjusting clothes` |
-  | `BRA-03/04` | `Mano_Secundaria` | `secondary_hand_action` | `finger to mouth` / `hand on own chest` |
-  | `BRA-05/06` | `Mano_Soporte` | `support_hand_pose` | `arm support` / `hand on own hip` |
-  | `BRA-07` | `Mano_Libre` | `free_hand_pose` | `arm at side` |
-  | `BRA-08` | `Ambas_Manos` | Modificador explícito | `both hands` |
+* **Bloques de extremidades (en `tablas_pipeline_erotico_sexy.csv`):**
+
+  | ID Nemotécnico | Categoría | Tipo_Bloque | Concepto | Tags Principales |
+  | :--- | :--- | :--- | :--- | :--- |
+  | `LEG-WIDE` | `LEGS` | `Leg_Wide` | Piernas Abiertas | `legs apart, wide stance` |
+  | `LEG-PROFILE` | `LEGS` | `Leg_Profile` | Perfil Inferior | `from side, legs in profile, long legs` |
+  | `LEG-FOCUS` | `LEGS` | `Leg_Focus` | Enfoque en Piernas | `leg focus, thighs, long legs` |
+  | `LEG-ADJUST-HOSE` | `LEGS` | `Manual_Interaction` | Ajustando Media (Mano 1) | `adjusting legwear, hand on own thigh` |
+  | `LEG-CROSSED` | `LEGS` | `Leg_Crossed` | Piernas Cruzadas | `crossed legs` |
+  | `LEG-TOGETHER` | `LEGS` | `Leg_Together` | Piernas Juntas | `legs together` |
+  | `LEG-KNEE-UP` | `LEGS` | `Leg_Knee` | Rodilla Elevada | `knee up` |
+  | `LEG-CROTCH-FOCUS` | `LEGS` | `Leg_Focus` | Enfoque en Entrepierna | `vagina focus, crotch focus` |
+  | `LEG-SPREAD` | `LEGS` | `Manual_Interaction` | Apertura Manual (Mano 1) | `vagina open with fingers, fingers spreading vagina` |
+  | `HAND-HAIR` | `HANDS` | `Primary_Hand` | Mano en el Cabello | `hand in own hair` |
+  | `HAND-CLOTHES` | `HANDS` | `Primary_Hand` | Ajustando Prenda | `adjusting clothes` |
+  | `HAND-LIPS` | `HANDS` | `Secondary_Hand` | Dedo en los Labios | `finger to mouth` |
+  | `HAND-CHEST` | `HANDS` | `Secondary_Hand` | Mano en el Pecho | `hand on own chest` |
+  | `HAND-SUPPORT` | `HANDS` | `Support_Hand` | Apoyo en la Mano | `arm support` |
+  | `HAND-HIP` | `HANDS` | `Support_Hand` | Mano en la Cadera | `hand on own hip` |
+  | `HAND-FREE` | `HANDS` | `Free_Hand` | Brazo Relajado | `arm at side` |
+  | `HAND-BOTH` | `HANDS` | `Both_Hands` | Ambas Manos Explícito | `both hands` |
+  | `HAND-INTIMATE-VAGINA` | `HANDS` | `Primary_Hand` | Masturbación Íntima | `hand masturbating vagina, fingers in vagina` |
+  | `HAND-INTIMATE-BREASTS`| `HANDS` | `Primary_Hand` | Acariciando Pecho | `hand touching breasts, hand on nipples` |
+  | `HAND-SUPPORT-FLOOR` | `HANDS` | `Support_Hand` | Apoyo en Rodilla o Suelo | `hand on knee, hand on floor, support hand` |
+  | `HAND-BOTH-INTIMATE` | `HANDS` | `Both_Hands` | Ambas Manos Íntimas | `both hands masturbating, hands on breasts and vagina` |
 
 * **Clase:** `LimbRuleEngine`
   * `apply(blocks) -> (blocks, notes)`: Ejecuta en orden:
     1. `_dedupe`: elimina IDs repetidos.
-    2. `_rule_framing` (**Encuadre**): si un `CAM`/`POSE_PACK` lleva tags de plano cerrado (`upper body`, `close-up`, `portrait`, `waist up`, `medium shot`, `head and shoulders`, `torso focus`…), se anulan todos los `PIE`.
-    3. `_rule_locomotion` (**Cinemática**): si la pose tiene `walking`/`running`/`mid-stride`, se anulan los `PIE` de tipo `Pierna_Cruzada` o con tag `crossed legs`.
+    2. `_rule_framing` (**Encuadre**): si un `CAMERA`/`POSE_PACK` lleva tags de plano cerrado (`upper body`, `close-up`, `portrait`, `waist up`, `medium shot`, `head and shoulders`, `torso focus`…), se anulan los bloques de `LEGS`.
+    3. `_rule_locomotion` (**Cinemática**): si la pose tiene `walking`/`running`/`mid-stride`, se anula `LEG-CROSSED` (o tags `crossed legs`).
     4. `_rule_hands` (**Manos**):
-       * **`PIE-04` ocupa la Mano 1** (`_reserve_hand_one`): los `BRA` solo gestionan la Mano 2. Se eliminan `BRA-08` (no quedan dos manos libres) y cualquier `Mano_Primaria` (sería una segunda interacción); en la Mano 2 solo cabe un `BRA` Secundaria/Soporte/Libre.
-       * Sin `PIE-04`: solo se conserva la primera `Mano_Primaria`; las demás se eliminan salvo `BRA-08`.
-       * Con `BRA-08`: la acción primaria ocupa ambas manos y se eliminan los `BRA` secundarios/soporte/libres.
+       * **`LEG-ADJUST-HOSE` / `LEG-SPREAD` ocupa la Mano 1** (`_reserve_hand_one`): las manos solo gestionan la Mano 2. Se eliminan `HAND-BOTH` (no quedan dos manos libres) y cualquier `Primary_Hand` (sería una segunda interacción); en la Mano 2 solo cabe una mano Secundaria/Soporte/Libre.
+       * Sin interacción inferior: solo se conserva la primera `Primary_Hand`; las demás se eliminan salvo `HAND-BOTH`.
+       * Con `HAND-BOTH`: la acción primaria ocupa ambas manos y se eliminan las manos secundarias/soporte/libres.
        * Presupuesto de 2 manos: si se declaran más, se descarta en orden Libre → Soporte → Secundaria.
-       * Si hay una acción de interacción y ninguna otra mano declarada, se inserta automáticamente `Mano_Soporte` (pose sentada/inclinada/tumbada/arrodillada) o `Mano_Libre` (resto), tomando la primera fila de ese rol en el CSV.
-    5. `_rule_tag_collisions` (**Colisión**): si hay `PIE`, se quitan los tags de piernas (`legs`, `knee`, `wide stance`, `one leg`) de `POS`/`ACC`/`POSE_PACK`/`EXP`; si hay `BRA` (o `PIE-04`), se quitan los de manos (`hand`, `arm`, `fist`, `finger`). Sin `BRA`, si un `EXP` trae tags de manos (`EXP-05`/`EXP-06`), éstos tienen prioridad y se quitan los tags de manos de `POS`/`ACC`/`POSE_PACK`. Un bloque que queda vacío se elimina.
+       * Si hay una acción de interacción y ninguna otra mano declarada, se inserta automáticamente `HAND-SUPPORT`/`HAND-HIP` (pose sentada/inclinada/tumbada) o `HAND-FREE` (resto).
+    5. `_rule_tag_collisions` (**Colisión**): si hay `LEGS`, se quitan los tags de piernas (`legs`, `knee`, `wide stance`, `one leg`) de `POSTURE`/`GESTURE`/`POSE_PACK`/`EXPRESSION`; si hay `HANDS` (o interacción manual inferior), se quitan los de manos (`hand`, `arm`, `fist`, `finger`). Sin bloques de manos, si `EXPRESSION` trae tags de manos, éstos tienen prioridad. Un bloque que queda vacío se elimina.
   * Las notas se muestran en terminal como `⚖️ REGLA:` y se guardan en el resumen de disco y en el JSON batch (`rule_notes`).
 
 ---
@@ -226,5 +239,5 @@ flowchart TD
 | **Añadir columnas o campos nuevos a los CSVs** | `src/database.py` | `PipelineDatabase._load_master_dictionary` |
 | **Cambiar qué cuenta como plano cerrado / locomoción** | `src/limb_rules.py` | `CLOSE_FRAMING_TAGS`, `LOCOMOTION_TAGS` |
 | **Cambiar la lógica de mano primaria/soporte/libre** | `src/limb_rules.py` | `LimbRuleEngine._rule_hands` |
-| **Añadir una pose de piernas o manos** | `tablas_pipeline_erotico_sexy.csv` | Nueva fila `PIE`/`BRA` con su `Tipo_Bloque` |
-| **Cambiar la probabilidad de PIE/BRA en random** | `src/assembler.py` | `PromptAssembler._random_limbs` |
+| **Añadir una pose de piernas o manos** | `tablas_pipeline_erotico_sexy.csv` | Nueva fila `LEGS`/`HANDS` con su `Tipo_Bloque` |
+| **Cambiar la probabilidad de LEGS/HANDS en random** | `src/assembler.py` | `PromptAssembler._random_limbs` |

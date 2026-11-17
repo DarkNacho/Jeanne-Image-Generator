@@ -76,4 +76,22 @@ El usuario incorporó las siguientes novedades en el repositorio:
 
 1. Generar las tomas `ADV-XX` en ComfyUI y revisar visualmente manos/piernas (el validador asegura coherencia del *prompt*, no de la imagen).
 2. Decidir si `PIE`/`BRA` deben añadirse también a la tabla clásica.
-3. Las filas `EXP` y `MIR` de la tabla sexy repiten tags (p. ej. `EXP-01` = `MIR-01`); el guion avanzado usa solo `EXP` para no duplicar.
+3. [RESUELTO] Se sanearon las tablas de `tablas_pipeline_erotico_sexy.csv`: eliminados duplicados (IDs repetidos, copypaste de MIR en EXP), corregidas comas sin entrecomillar (`OUT-02E`, `POS-04`), asignados `Tipo_Bloque` correctos a `PIE` (`PIE-01..09`) y `BRA` (`BRA-01..12`), y agregadas protecciones de validación en `src/database.py`. Todas las tomas ADV y VAL pasan al 100%.
+4. [RESUELTO] Migración a IDs y campos legibles en Inglés para la máquina, con Concepto y Descripciones en Español para el usuario:
+   * **Diccionarios (`tablas_pipeline_jeanne_alter.csv` y `tablas_pipeline_erotico_sexy.csv`):**
+     * IDs en inglés nemotécnico: `ID-JEANNE`, `SCENE-CATHEDRAL`, `STYLE-PHOTO`, `NEG-BASE`, `OUT-ARMOR`, `OUT-NO-ARMOR`, `OUT-LINGERIE`, `CAM-FULL`, `POS-RELAXED`, `HAND-HAIR`, `LEG-WIDE`, `EXP-SERENE`, `LOOK-DIRECT`, `LIGHT-GOLDEN`, etc.
+     * Categorías en inglés: `IDENTITY`, `SCENE`, `STYLE`, `NEGATIVE`, `OUTFIT`, `CAMERA`, `POSTURE`, `GESTURE`, `POSE_PACK`, `LEGS`, `HANDS`, `EXPRESSION`, `GAZE`, `LIGHT`.
+     * `Tipo_Bloque` en inglés: `Session_Fixed`, `Layer_Armor`, `Layer_Dress`, `Layer_Lingerie`, `Open_Framing`, `Close_Framing`, `Modular_Pose`, `Full_Pose`, `Primary_Hand`, `Secondary_Hand`, `Support_Hand`, `Free_Hand`, `Both_Hands`, `Leg_Wide`, `Manual_Interaction`, etc.
+     * `Concepto` y `Descripcion_Natural` conservados en Español para lectura humana cómoda.
+   * **Guiones de Tomas (`escenas_sesion_jeanne_alter.csv` y `escenas_sesion_avanzada_jeanne.csv`):**
+     * Actualizados a IDs en inglés en `Secuencia_IDs` y columnas individuales (`ID_Identidad`, `ID_Outfit`, `ID_PosePack`, etc.).
+     * `Descripcion` conservada en Español.
+   * **Código Python (`src/limb_rules.py`, `src/assembler.py`, `src/database.py`):**
+     * Soporte bilingüe y adaptado a roles en inglés (`Primary_Hand`, `Manual_Interaction`, etc.) y categorías en inglés (`HANDS`, `LEGS`, `CAMERA`, etc.).
+   * **Verificación de Pruebas:**
+     * Tomas estándar: `SHOT-01..08` (8/8 pasaron).
+     * Tomas avanzadas y reglas: `ADV-01..05`, `VAL-01..05` (10/10 pasaron).
+     * Modo aleatorio (estándar, erótico y avanzado) verificado al 100%.
+5. [NUEVO] Creado `PROMPT_LLM_DIRECTOR_FOTOGRAFIA.md` y script automatizado `export_llm_prompt.py`:
+   * Script generador: Ejecuta `python export_llm_prompt.py` o `python pipeline.py --export-llm`. Lee ambos CSVs con soporte UTF-8-sig, fusiona y deduplica los 88 bloques atómicos por categoría funcional, inyecta las reglas anatómicas (Limb Rules), el protocolo de creación de nuevos bloques (Concept-to-Pipeline) y emite el archivo Markdown listo para copiar y pegar en ChatGPT, Claude o LLMs de roleplay.
+   * Flujo de trabajo resultante: El usuario solo corre el script, copia el .md a su LLM, y en el siguiente turno describe en lenguaje natural su escena compleja para recibir la secuencia, prompts y filas CSV listas.
